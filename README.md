@@ -1,0 +1,1 @@
+# AlphaFold-1-simplified
