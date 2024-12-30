@@ -1,3 +1,5 @@
 # Mini-fold
 
-![GIF](readme-images/folding.gif)
+| Prediction                        | Target                             |
+|-----------------------------------|------------------------------------|
+| ![GIF](readme-images/folding.gif) | ![image](readme-images/target.png) |
