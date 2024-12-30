@@ -1,1 +1,3 @@
-# AlphaFold-1-simplified
+# Mini-fold
+
+![GIF](readme-images/folding.gif)
