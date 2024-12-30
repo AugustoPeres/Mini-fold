@@ -16,7 +16,7 @@ DEFAULT_TOKENIZER = {
 }
 
 
-class ShapeDataset():
+class ShapeDataset(torch.utils.data.Dataset):
 
     def __init__(self, folder):
         self.folder = folder
@@ -64,13 +64,27 @@ def _tokenize_batch(tokenizer, seq_batch):
     padded_sequences = []
     for t_seq in tokenized_sequences:
         padded_sequences.append(t_seq + [tokenizer['PAD']] *
-                                (len(t_seq) - max_len))
-    return padded_sequences
+                                (max_len - len(t_seq)))
+    padded_sequences = np.array(padded_sequences)
+    padding_mask = padded_sequences == tokenizer['PAD']
+    return padded_sequences, padding_mask
 
 
 def _pad_matrices(matrices):
     """Pads a batch of matrices"""
-    pass
+    max_size = max(map(lambda x: x.shape[0], matrices))
+    padded_matrices = []
+    padding_masks = []
+    for m in matrices:
+        i, j = m.shape
+        padded_matrices.append(
+            np.pad(m, pad_width=((0, max_size - i), (0, max_size - j))))
+        padding_mask = np.ones_like(m)
+        np.fill_diagonal(padding_mask, 0)
+        padding_masks.append(
+            np.pad(padding_mask,
+                   pad_width=((0, max_size - i), (0, max_size - j))))
+    return np.array(padded_matrices), np.array(padding_masks)
 
 
 def collate_fn(tokenizer):
@@ -80,16 +94,18 @@ def collate_fn(tokenizer):
         """Tokenizes and pads the inputs when extracting a batch from
         the dataset."""
         text = [e['sequence'] for e in examples]
-        # TODO: Pad the sequences
-        # TODO: Pad the matrixes with the distances
-
-        # tokenizer_output = tokenizer(text, padding='longest')
-        # class_target = [e['helpful'] for e in examples]
-
-        # return {
-        #     'review_text': torch.tensor(tokenizer_output['input_ids']),
-        #     'attention_mask': torch.tensor(tokenizer_output['attention_mask']),
-        #     'class_target': torch.tensor(class_target)
-        # }
+        distances = [e['distances'] for e in examples]
+        tokenized_sequences, padding_masks = _tokenize_batch(tokenizer, text)
+        distance_matrices, distance_padding = _pad_matrices(distances)
+        return {
+            'sequences':
+            torch.tensor(tokenized_sequences, dtype=torch.int32),
+            'seq_padding_mask':
+            torch.tensor(padding_masks, dtype=torch.bool),
+            'distance_matrices':
+            torch.tensor(distance_matrices, dtype=torch.float32),
+            'distance_padding':
+            torch.tensor(distance_padding, dtype=torch.float32)
+        }
 
     return collate

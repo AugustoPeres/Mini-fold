@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-import pytorch_lightning as pl
+import lightning as l
 import numpy as np
 
 
@@ -33,7 +33,7 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
 
 
-class SeqTransformer(pl.LightningModule):
+class SeqTransformer(l.LightningModule):
 
     def __init__(self,
                  ntoken,
@@ -57,8 +57,6 @@ class SeqTransformer(pl.LightningModule):
             encoder_layers, nlayers)
         self.embedding = nn.Embedding(ntoken, d_model)
         self.d_model = d_model
-        self.linear = nn.Linear(d_model, ntoken)
-        # self.final_activation = nn.LogSoftmax(dim=2)
 
         self.distance_mlp = nn.Sequential()
         for i, o in distance_mlp_layer_sizes:
@@ -68,15 +66,14 @@ class SeqTransformer(pl.LightningModule):
         self.n_tokens = ntoken
         self.learning_rate = learning_rate
 
-    def forward(self, source, temperature=1):
+    def forward(self, source, src_key_padding_mask=None):
         # Because our data comes batch first
         source = torch.transpose(source, 0, 1)
 
         source = self.embedding(source)
         source = self.pos_encoder(source)
-        # TODO: padding_mask
-        output = self.transformer_encoder(source)
-        output = self.linear(output)
+        output = self.transformer_encoder(
+            source, src_key_padding_mask=src_key_padding_mask)
         output = torch.transpose(output, 0, 1)
         pairwise_sums = output[:, :, None, :] + output[:, None, :, :]
         distance_predictions = self.distance_mlp(pairwise_sums)
@@ -86,7 +83,7 @@ class SeqTransformer(pl.LightningModule):
         training_loss = self._compute_loss(batch)
         self.log('loss',
                  training_loss,
-                 on_step=False,
+                 on_step=True,
                  on_epoch=True,
                  prog_bar=True)
         return {'loss': training_loss}
@@ -103,9 +100,13 @@ class SeqTransformer(pl.LightningModule):
         return {'val_loss': val_loss}
 
     def _compute_loss(self, batch):
-        sequences = batch['tokenized_sequences']
-        distances = batch['distances']
-        preds = self.foward(sequences)
+        sequences = batch['sequences']
+        src_key_padding_mask = batch['seq_padding_mask']
+        distances = batch['distance_matrices']
+        distance_padding = batch['distance_padding']
+        preds = self.forward(
+            sequences, src_key_padding_mask=src_key_padding_mask).squeeze(-1)
+        preds = preds * distance_padding
         return nn.MSELoss()(preds, distances)
 
     def configure_optimizers(self):
